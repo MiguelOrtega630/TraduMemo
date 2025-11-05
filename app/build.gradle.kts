@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -8,6 +10,7 @@ android {
     namespace = "me.miguelantonyortegasanta.tradumemo"
     compileSdk = 36
 
+
     defaultConfig {
         applicationId = "me.miguelantonyortegasanta.tradumemo"
         minSdk = 26
@@ -16,6 +19,17 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("String", "GOOGLE_API_KEY", "\"${project.properties["GOOGLE_API_KEY"] ?: ""}\"")
+
+        // Leer la key desde local.properties
+        val localProps = project.rootProject.file("local.properties")
+        val props = Properties()
+        if (localProps.exists()) {
+            props.load(localProps.inputStream())
+        }
+        val googleKey = props.getProperty("GOOGLE_API_KEY") ?: ""
+        buildConfigField("String", "GOOGLE_API_KEY", "\"$googleKey\"")
+
     }
 
     buildTypes {
@@ -36,6 +50,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -56,7 +71,7 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
-    implementation(libs.androidx.compose.bom.v20240600)
+    implementation(platform(libs.androidx.compose.bom.v20240600))
     implementation(libs.androidx.activity.compose.v190)
     implementation(libs.androidx.material3)
     implementation(libs.androidx.navigation.compose)
@@ -64,4 +79,17 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.compose.material.icons.extended)
     debugImplementation(libs.androidx.ui.tooling)
+
+    implementation(libs.google.cloud.speech)
+    implementation( libs.google.auth.library.oauth2.http)
+    implementation(libs.grpc.okhttp)
+    implementation(libs.grpc.stub)
+
+    implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.okhttp)
+    implementation(libs.okhttp.v4120)
+
+    implementation(libs.kotlinx.coroutines.android.v173)
+
+
 }
