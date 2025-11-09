@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "965725760295",
+    "project_id": "tradumemo-1e514",
+    "storage_bucket": "tradumemo-1e514.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:965725760295:android:324ff4e0b3aac4ddced702",
+        "android_client_info": {
+          "package_name": "me.miguelantonyortegasanta.tradumemo"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAyC1bhN_It0qXGU1CEAVvw1h1EpsjVbX4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
