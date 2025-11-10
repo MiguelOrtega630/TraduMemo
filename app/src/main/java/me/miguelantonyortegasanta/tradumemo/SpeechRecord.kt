@@ -1,4 +1,3 @@
-// imports necesarios
 import android.Manifest
 import android.content.pm.PackageManager
 import android.media.AudioFormat
@@ -8,6 +7,12 @@ import android.util.Base64
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresPermission
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
@@ -34,6 +39,8 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 
 import me.miguelantonyortegasanta.tradumemo.BuildConfig
+import androidx.compose.animation.core.*
+import androidx.compose.material3.CircularProgressIndicator
 
 
 // --- Recorder helper (AudioRecord -> WAV bytes) ---
@@ -133,6 +140,8 @@ class SimpleRecorder(
     }
 }
 
+
+
 // --- Network: envia WAV base64 a Google Speech-to-Text (REST v1) ---
 suspend fun sendWavToGoogleSpeech(
     wavBytes: ByteArray,
@@ -151,6 +160,9 @@ suspend fun sendWavToGoogleSpeech(
                 put("encoding", "LINEAR16")
                 put("sampleRateHertz", 16000)
                 put("languageCode", languageCode)
+                put("enableAutomaticPunctuation", true)
+                put("useEnhanced", true)
+                put("model", "default")
             })
             put("audio", JSONObject().apply {
                 put("content", audioBase64)
@@ -186,17 +198,25 @@ suspend fun sendWavToGoogleSpeech(
 // --- Composable reemplazando la versión que lanzaba RecognizerIntent ---
 @Composable
 fun RecordToggleIconButtonWithCloudSTT(
-    onTextRecognized: (String) -> Unit
+    onTextRecognized: (String) -> Unit,
+    onRecordingStart: (() -> Unit)? = null,
+    languageCode: String = "es-ES"
+
 ) {
     var isToggled by rememberSaveable { mutableStateOf(false) }
+    var isProcessing by rememberSaveable { mutableStateOf(false) }
+
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val recorder = remember { SimpleRecorder() }
 
-    // permiso runtime (simple)
+    // ⏱️ Máxima duración (ajusta según preferencia)
+    val MAX_RECORDING_MS = 60_000L // 60 segundos
+
+    // permiso runtime
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
-        onResult = { /* no-op aquí */ }
+        onResult = { /* no-op */ }
     )
     LaunchedEffect(Unit) {
         val ok = androidx.core.content.ContextCompat.checkSelfPermission(
@@ -205,36 +225,75 @@ fun RecordToggleIconButtonWithCloudSTT(
         if (!ok) permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
     }
 
-    FilledIconButton(
-        onClick = {
-            isToggled = !isToggled
-            if (isToggled) {
-                // empieza a grabar
-                recorder.start()
-            } else {
-                // detener: obtener wav y enviarlo
-                scope.launch {
-                    val wav = withContext(Dispatchers.Default) { recorder.stopAndGetWav() }
-                    // enviar al API (red) y obtener transcripción
-                    val transcript = try {
-                        sendWavToGoogleSpeech(wav, languageCode = "es-CO")
-                    } catch (e: Exception) {
-                        "Error: ${e.message}"
-                    }
-                    onTextRecognized(transcript)
-                }
+    // --- Función para detener y enviar al API ---
+    fun stopAndSend() {
+        isProcessing = true
+        scope.launch {
+            val wav = withContext(Dispatchers.Default) { recorder.stopAndGetWav() }
+            val transcript = try {
+                sendWavToGoogleSpeech(wav, languageCode = languageCode)
+            } catch (e: Exception) {
+                "Error: ${e.message}"
             }
-        },
-        colors = IconButtonDefaults.filledIconButtonColors(
-            containerColor = if (isToggled) Color.Gray else Color.Red,
-            contentColor = Color.White
-        ),
-        modifier = Modifier.size(80.dp)
-    ) {
-        Icon(
-            imageVector = if (isToggled) Icons.Filled.Stop else Icons.Filled.FiberManualRecord,
-            contentDescription = if (isToggled) "Detener" else "Grabar",
-            modifier = Modifier.size(60.dp)
+            onTextRecognized(transcript)
+            isProcessing = false
+        }
+    }
+
+    // --- Auto-stop cuando se llega al máximo ---
+    LaunchedEffect(isToggled) {
+        if (isToggled) {
+            kotlinx.coroutines.delay(MAX_RECORDING_MS)
+            if (isToggled) {
+                isToggled = false
+                stopAndSend()
+            }
+        }
+    }
+
+    // --- UI principal ---
+    if (isProcessing) {
+        // 🎧 Mostramos indicador de carga mientras procesa
+        CircularProgressIndicator(
+            color = Color.Gray,
+            modifier = Modifier.size(64.dp)
         )
+    } else {
+        FilledIconButton(
+            onClick = {
+                isToggled = !isToggled
+                if (isToggled) {
+                    onRecordingStart?.invoke()
+                    recorder.start()
+                } else {
+                    // 🔧 Show the loading animation before processing
+                    isProcessing = true
+                    scope.launch {
+                        val wav = withContext(Dispatchers.Default) { recorder.stopAndGetWav() }
+                        val transcript = try {
+                            sendWavToGoogleSpeech(wav, languageCode = languageCode)
+                        } catch (e: Exception) {
+                            "Error: ${e.message}"
+                        }
+                        onTextRecognized(transcript)
+                        isProcessing = false
+                    }
+                }
+            },
+            colors = IconButtonDefaults.filledIconButtonColors(
+                containerColor = if (isToggled) Color.Gray else Color.Red,
+                contentColor = Color.White
+            ),
+            modifier = Modifier.size(80.dp),
+            enabled = !isProcessing
+        ) {
+            Icon(
+                imageVector = if (isToggled) Icons.Filled.Stop else Icons.Filled.FiberManualRecord,
+                contentDescription = if (isToggled) "Detener" else "Grabar",
+                modifier = Modifier.size(60.dp)
+            )
+        }
     }
 }
+
+

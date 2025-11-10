@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Attachment
 import androidx.compose.material.icons.filled.Note
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.ui.text.style.TextAlign
 
 @Composable
 fun MainScreen(navController: NavController) {
@@ -137,7 +138,13 @@ fun BottomNavigationBar(navController: NavController) {
                 navController.navigate("transcription")
             },
             icon = { Icon(Icons.Default.Note, contentDescription = "Transcripciones") },
-            label = { Text("Transcripcion", fontSize = 12.sp) }
+            label = {
+                Text(
+                "Nueva \ntranscripción",
+                fontSize = 12.sp,
+                textAlign = TextAlign.Center,    // Center the text inside its box
+                modifier = Modifier.fillMaxWidth()  // Make sure it can center horizontally
+            )}
         )
         NavigationBarItem(
             selected = false,
