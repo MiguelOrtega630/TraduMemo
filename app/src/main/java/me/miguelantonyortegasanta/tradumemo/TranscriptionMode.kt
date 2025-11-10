@@ -22,7 +22,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
-// Place this in a shared file (e.g., ui/model or same screen file)
 enum class TranscriptionMode { TRANSCRIBE, TRANSLATE }
 
 @Composable

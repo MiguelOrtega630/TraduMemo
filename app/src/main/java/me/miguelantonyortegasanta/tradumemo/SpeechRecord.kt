@@ -41,6 +41,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import me.miguelantonyortegasanta.tradumemo.BuildConfig
 import androidx.compose.animation.core.*
 import androidx.compose.material3.CircularProgressIndicator
+import me.miguelantonyortegasanta.tradumemo.translateText
 
 
 // --- Recorder helper (AudioRecord -> WAV bytes) ---
@@ -195,13 +196,15 @@ suspend fun sendWavToGoogleSpeech(
     }
 }
 
-// --- Composable reemplazando la versión que lanzaba RecognizerIntent ---
 @Composable
 fun RecordToggleIconButtonWithCloudSTT(
     onTextRecognized: (String) -> Unit,
     onRecordingStart: (() -> Unit)? = null,
-    languageCode: String = "es-ES"
-
+    languageCode: String = "es-CO",
+    translate: Boolean = false,
+    translationSourceLanguageCode: String = "en",
+    translationTargetLanguageCode: String = "es",
+    onOriginalRecognized: ((String) -> Unit)? = null
 ) {
     var isToggled by rememberSaveable { mutableStateOf(false) }
     var isProcessing by rememberSaveable { mutableStateOf(false) }
@@ -210,10 +213,10 @@ fun RecordToggleIconButtonWithCloudSTT(
     val scope = rememberCoroutineScope()
     val recorder = remember { SimpleRecorder() }
 
-    // ⏱️ Máxima duración (ajusta según preferencia)
+    // ⏱️ Máxima duración
     val MAX_RECORDING_MS = 60_000L // 60 segundos
 
-    // permiso runtime
+    // Permiso de micrófono
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
         onResult = { /* no-op */ }
@@ -225,35 +228,46 @@ fun RecordToggleIconButtonWithCloudSTT(
         if (!ok) permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
     }
 
-    // --- Función para detener y enviar al API ---
-    fun stopAndSend() {
-        isProcessing = true
-        scope.launch {
-            val wav = withContext(Dispatchers.Default) { recorder.stopAndGetWav() }
-            val transcript = try {
-                sendWavToGoogleSpeech(wav, languageCode = languageCode)
-            } catch (e: Exception) {
-                "Error: ${e.message}"
-            }
-            onTextRecognized(transcript)
-            isProcessing = false
-        }
-    }
-
-    // --- Auto-stop cuando se llega al máximo ---
+    // Auto-stop cuando se llega al máximo
     LaunchedEffect(isToggled) {
         if (isToggled) {
             kotlinx.coroutines.delay(MAX_RECORDING_MS)
             if (isToggled) {
                 isToggled = false
-                stopAndSend()
+                isProcessing = true
+                scope.launch {
+                    val wav = withContext(Dispatchers.Default) { recorder.stopAndGetWav() }
+                    try {
+                        // 🔹 1) Speech-to-Text
+                        val transcript = sendWavToGoogleSpeech(wav, languageCode)
+
+                        // Texto original para quien lo quiera usar (modo traducir)
+                        onOriginalRecognized?.invoke(transcript)
+
+                        // 🔹 2) Traducción opcional
+                        val finalText = if (translate) {
+                            translateText(
+                                text = transcript,
+                                sourceLanguageCode = translationSourceLanguageCode,
+                                targetLanguageCode = translationTargetLanguageCode
+                            )
+                        } else {
+                            transcript
+                        }
+
+                        onTextRecognized(finalText)
+                    } catch (e: Exception) {
+                        onTextRecognized("Error: ${e.message}")
+                    } finally {
+                        isProcessing = false
+                    }
+                }
             }
         }
     }
 
-    // --- UI principal ---
+    // UI
     if (isProcessing) {
-        // 🎧 Mostramos indicador de carga mientras procesa
         CircularProgressIndicator(
             color = Color.Gray,
             modifier = Modifier.size(64.dp)
@@ -263,20 +277,38 @@ fun RecordToggleIconButtonWithCloudSTT(
             onClick = {
                 isToggled = !isToggled
                 if (isToggled) {
+                    // Empieza a grabar
                     onRecordingStart?.invoke()
                     recorder.start()
                 } else {
-                    // 🔧 Show the loading animation before processing
+                    // Dejar de grabar y procesar
                     isProcessing = true
                     scope.launch {
                         val wav = withContext(Dispatchers.Default) { recorder.stopAndGetWav() }
-                        val transcript = try {
-                            sendWavToGoogleSpeech(wav, languageCode = languageCode)
+                        try {
+                            // 🔹 1) Speech-to-Text
+                            val transcript = sendWavToGoogleSpeech(wav, languageCode)
+
+                            // Texto original (solo si alguien lo pide, p.ej. modo traducir)
+                            onOriginalRecognized?.invoke(transcript)
+
+                            // 🔹 2) Traducción opcional
+                            val finalText = if (translate) {
+                                translateText(
+                                    text = transcript,
+                                    sourceLanguageCode = translationSourceLanguageCode,
+                                    targetLanguageCode = translationTargetLanguageCode
+                                )
+                            } else {
+                                transcript
+                            }
+
+                            onTextRecognized(finalText)
                         } catch (e: Exception) {
-                            "Error: ${e.message}"
+                            onTextRecognized("Error: ${e.message}")
+                        } finally {
+                            isProcessing = false
                         }
-                        onTextRecognized(transcript)
-                        isProcessing = false
                     }
                 }
             },
@@ -285,7 +317,6 @@ fun RecordToggleIconButtonWithCloudSTT(
                 contentColor = Color.White
             ),
             modifier = Modifier.size(80.dp),
-            enabled = !isProcessing
         ) {
             Icon(
                 imageVector = if (isToggled) Icons.Filled.Stop else Icons.Filled.FiberManualRecord,

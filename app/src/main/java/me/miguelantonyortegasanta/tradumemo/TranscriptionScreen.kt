@@ -58,14 +58,54 @@ fun TranscriptionScreen(navController: NavController) {
     val overlayBottomPadding = 24.dp
     val contentBottomPadding = overlayHeight + overlayBottomPadding
 
+    var originalText by rememberSaveable { mutableStateOf("") }
+    var translatedText by rememberSaveable { mutableStateOf("") }
+
     Scaffold(
         topBar = {
             TopAppBar(
                 navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
+                    IconButton(
+                        onClick = {
+                            // Si no hay texto, no guardamos nada
+                            if (textoExtraido.isBlank()) {
+                                navController.popBackStack()
+                                return@IconButton
+                            }
+
+                            // Idioma fuente y destino según el modo
+                            val sourceLanguageCode = when (mode) {
+                                TranscriptionMode.TRANSCRIBE -> "es-CO"   // o "es-ES", según estés usando
+                                TranscriptionMode.TRANSLATE  -> "en-US"   // por ejemplo, audio en inglés
+                            }
+
+                            val targetLanguageCode = when (mode) {
+                                TranscriptionMode.TRANSCRIBE -> null      // no hay traducción como tal
+                                TranscriptionMode.TRANSLATE  -> "es-CO"   // traducimos a español
+                            }
+
+                            TranscriptionRepository.saveTranscription(
+                                title = title,
+                                originalText = if (mode == TranscriptionMode.TRANSLATE) originalText else textoExtraido,
+                                translatedText = if (mode == TranscriptionMode.TRANSLATE) translatedText else "",
+                                mode = mode,
+                                sourceLanguageCode = when (mode) {
+                                    TranscriptionMode.TRANSCRIBE -> "es-CO"
+                                    TranscriptionMode.TRANSLATE -> "en-US"
+                                },
+                                targetLanguageCode = when (mode) {
+                                    TranscriptionMode.TRANSCRIBE -> null
+                                    TranscriptionMode.TRANSLATE -> "es-CO"
+                                },
+                                onSuccess = { navController.popBackStack() },
+                                onError = { e -> navController.popBackStack() }
+                            )
+                        }
+                    ) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Volver")
                     }
-                },
+                }
+                ,
                 title = {
                     if (isEditingTitle) {
                         LaunchedEffect(isEditingTitle) {
@@ -224,17 +264,31 @@ fun TranscriptionScreen(navController: NavController) {
                 ) {
                     RecordToggleIconButtonWithCloudSTT(
                         onTextRecognized = { recognizedText ->
-                            textoExtraido += if (textoExtraido.isNotBlank()) "\n$recognizedText" else recognizedText
+                            // si estamos traduciendo, este recognizedText ya viene traducido
+                            if (mode == TranscriptionMode.TRANSLATE) {
+                                translatedText += if (translatedText.isNotBlank()) "\n$recognizedText" else recognizedText
+                            } else {
+                                textoExtraido += if (textoExtraido.isNotBlank()) "\n$recognizedText" else recognizedText
+                            }
+                        },
+                        onOriginalRecognized = { original ->
+                            if (mode == TranscriptionMode.TRANSLATE) {
+                                originalText += if (originalText.isNotBlank()) "\n$original" else original
+                            }
                         },
                         onRecordingStart = {
                             if (!modeLocked) modeLocked = true
-                            // 🔜 later you’ll branch behavior using `mode` here
                         },
                         languageCode = when (mode) {
-                            TranscriptionMode.TRANSCRIBE -> "es-ES"  // Spanish transcription
-                            TranscriptionMode.TRANSLATE  -> "en-US"  // English transcription (for translation)
-                        }
+                            TranscriptionMode.TRANSCRIBE -> "es-CO"  // audio en español
+                            TranscriptionMode.TRANSLATE  -> "en-US"  // audio en inglés
+                        },
+                        translate = (mode == TranscriptionMode.TRANSLATE),
+                        translationSourceLanguageCode = "en",
+                        translationTargetLanguageCode = "es"
                     )
+
+
                 }
             }
         }
