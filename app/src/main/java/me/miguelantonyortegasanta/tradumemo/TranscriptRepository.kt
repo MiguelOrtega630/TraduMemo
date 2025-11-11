@@ -12,10 +12,10 @@ object TranscriptionRepository {
     fun saveTranscription(
         title: String,
         originalText: String,
-        translatedText: String,          // por ahora lo pasamos vacío
+        translatedText: String,
         mode: TranscriptionMode,
         sourceLanguageCode: String,
-        targetLanguageCode: String?,     // puede ser null si no aplica
+        targetLanguageCode: String?,
         onSuccess: () -> Unit,
         onError: (Exception) -> Unit
     ) {
@@ -29,7 +29,7 @@ object TranscriptionRepository {
             "title" to title,
             "originalText" to originalText,
             "translatedText" to translatedText,
-            "mode" to mode.name,                // "TRANSCRIBE" / "TRANSLATE"
+            "mode" to mode.name,
             "sourceLanguageCode" to sourceLanguageCode,
             "targetLanguageCode" to targetLanguageCode,
             "timestamp" to Timestamp.now()

@@ -7,12 +7,6 @@ import android.util.Base64
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresPermission
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
@@ -37,11 +31,14 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-
 import me.miguelantonyortegasanta.tradumemo.BuildConfig
-import androidx.compose.animation.core.*
 import androidx.compose.material3.CircularProgressIndicator
 import me.miguelantonyortegasanta.tradumemo.translateText
+import android.content.Context
+import android.media.audiofx.AutomaticGainControl
+import android.media.audiofx.NoiseSuppressor
+import java.io.File
+import java.io.FileOutputStream
 
 
 // --- Recorder helper (AudioRecord -> WAV bytes) ---
@@ -59,14 +56,25 @@ class SimpleRecorder(
     fun start() {
         stop() // por seguridad
         recorder = AudioRecord(
-            MediaRecorder.AudioSource.MIC,
+            MediaRecorder.AudioSource.VOICE_RECOGNITION, // mejor fuente para voz
             sampleRate,
             channelConfig,
             audioFormat,
             bufferSize.coerceAtLeast(sampleRate * 2)
         )
+
+        // Activar procesamiento de audio del sistema (si está disponible)
+        recorder?.let { rec ->
+            if (NoiseSuppressor.isAvailable()) {
+                NoiseSuppressor.create(rec.audioSessionId)
+            }
+            if (AutomaticGainControl.isAvailable()) {
+                AutomaticGainControl.create(rec.audioSessionId)
+            }
+        }
+
         outStream = ByteArrayOutputStream()
-        recorder?.startRecording()
+        recorder?.startRecording()   // 🎙️ aquí sigue igual, comienza la captura
 
         recordingThread = Thread {
             val buffer = ShortArray(bufferSize / 2)
@@ -197,7 +205,7 @@ suspend fun sendWavToGoogleSpeech(
 }
 
 @Composable
-fun RecordToggleIconButtonWithCloudSTT(
+fun RecordButton(
     onTextRecognized: (String) -> Unit,
     onRecordingStart: (() -> Unit)? = null,
     languageCode: String = "es-CO",
@@ -213,7 +221,7 @@ fun RecordToggleIconButtonWithCloudSTT(
     val scope = rememberCoroutineScope()
     val recorder = remember { SimpleRecorder() }
 
-    // ⏱️ Máxima duración
+    // Máxima duración
     val MAX_RECORDING_MS = 60_000L // 60 segundos
 
     // Permiso de micrófono
@@ -237,14 +245,15 @@ fun RecordToggleIconButtonWithCloudSTT(
                 isProcessing = true
                 scope.launch {
                     val wav = withContext(Dispatchers.Default) { recorder.stopAndGetWav() }
+                    //DEBUG: Guardar wav en memoria
+                    //debugSaveWav(context, wav)
                     try {
-                        // 🔹 1) Speech-to-Text
+                        //Speech-to-Text
                         val transcript = sendWavToGoogleSpeech(wav, languageCode)
 
-                        // Texto original para quien lo quiera usar (modo traducir)
                         onOriginalRecognized?.invoke(transcript)
 
-                        // 🔹 2) Traducción opcional
+                        //Traducción opcional
                         val finalText = if (translate) {
                             translateText(
                                 text = transcript,
@@ -285,11 +294,14 @@ fun RecordToggleIconButtonWithCloudSTT(
                     isProcessing = true
                     scope.launch {
                         val wav = withContext(Dispatchers.Default) { recorder.stopAndGetWav() }
+
+                        // 🔹 DEBUG: guardar el WAV SIEMPRE que pares manualmente
+                        //debugSaveWav(context, wav)
+
                         try {
                             // 🔹 1) Speech-to-Text
                             val transcript = sendWavToGoogleSpeech(wav, languageCode)
 
-                            // Texto original (solo si alguien lo pide, p.ej. modo traducir)
                             onOriginalRecognized?.invoke(transcript)
 
                             // 🔹 2) Traducción opcional
@@ -327,4 +339,15 @@ fun RecordToggleIconButtonWithCloudSTT(
     }
 }
 
+//DEBUG: Guardar wav en memoria
+fun debugSaveWav(context: Context, wavBytes: ByteArray): File {
+    val dir = context.getExternalFilesDir(null) ?: context.filesDir
+    val file = File(dir, "debug_recording_${System.currentTimeMillis()}.wav")
 
+    FileOutputStream(file).use { fos ->
+        fos.write(wavBytes)
+    }
+
+    android.util.Log.d("DEBUG_WAV", "Guardado WAV en: ${file.absolutePath}")
+    return file
+}

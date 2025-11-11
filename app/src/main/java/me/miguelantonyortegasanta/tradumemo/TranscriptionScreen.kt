@@ -1,14 +1,10 @@
 package me.miguelantonyortegasanta.tradumemo
 
-import RecordToggleIconButtonWithCloudSTT
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
-import me.miguelantonyortegasanta.tradumemo.TranscriptionMode
+import RecordButton
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -19,10 +15,8 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextRange
@@ -67,21 +61,27 @@ fun TranscriptionScreen(navController: NavController) {
                 navigationIcon = {
                     IconButton(
                         onClick = {
+                            // Verificamos si hay contenido según el modo
+                            val hasContent = when (mode) {
+                                TranscriptionMode.TRANSCRIBE -> textoExtraido.isNotBlank()
+                                TranscriptionMode.TRANSLATE  -> translatedText.isNotBlank()
+                            }
+
                             // Si no hay texto, no guardamos nada
-                            if (textoExtraido.isBlank()) {
+                            if (!hasContent) {
                                 navController.popBackStack()
                                 return@IconButton
                             }
 
                             // Idioma fuente y destino según el modo
                             val sourceLanguageCode = when (mode) {
-                                TranscriptionMode.TRANSCRIBE -> "es-CO"   // o "es-ES", según estés usando
-                                TranscriptionMode.TRANSLATE  -> "en-US"   // por ejemplo, audio en inglés
+                                TranscriptionMode.TRANSCRIBE -> "es-CO"
+                                TranscriptionMode.TRANSLATE  -> "en-US"
                             }
 
                             val targetLanguageCode = when (mode) {
-                                TranscriptionMode.TRANSCRIBE -> null      // no hay traducción como tal
-                                TranscriptionMode.TRANSLATE  -> "es-CO"   // traducimos a español
+                                TranscriptionMode.TRANSCRIBE -> null
+                                TranscriptionMode.TRANSLATE  -> "es-CO"
                             }
 
                             TranscriptionRepository.saveTranscription(
@@ -89,14 +89,8 @@ fun TranscriptionScreen(navController: NavController) {
                                 originalText = if (mode == TranscriptionMode.TRANSLATE) originalText else textoExtraido,
                                 translatedText = if (mode == TranscriptionMode.TRANSLATE) translatedText else "",
                                 mode = mode,
-                                sourceLanguageCode = when (mode) {
-                                    TranscriptionMode.TRANSCRIBE -> "es-CO"
-                                    TranscriptionMode.TRANSLATE -> "en-US"
-                                },
-                                targetLanguageCode = when (mode) {
-                                    TranscriptionMode.TRANSCRIBE -> null
-                                    TranscriptionMode.TRANSLATE -> "es-CO"
-                                },
+                                sourceLanguageCode = sourceLanguageCode,
+                                targetLanguageCode = targetLanguageCode,
                                 onSuccess = { navController.popBackStack() },
                                 onError = { e -> navController.popBackStack() }
                             )
@@ -207,39 +201,20 @@ fun TranscriptionScreen(navController: NavController) {
                 // Selectable + scrollable text with fades
                 SelectionContainer {
                     Text(
-                        text = textoExtraido,
+                        text = when (mode) {
+                            TranscriptionMode.TRANSCRIBE -> textoExtraido
+                            TranscriptionMode.TRANSLATE  -> translatedText
+                        },
                         style = MaterialTheme.typography.bodyLarge,
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(bottom = contentBottomPadding)
                             .verticalScroll(scrollState)
-                            .drawWithContent {
-                                drawContent()
-
-                                val gradientHeight = 80f
-                                val topFade = Brush.verticalGradient(
-                                    colors = listOf(backgroundColor, fadeColor, Color.Transparent),
-                                    startY = 0f,
-                                    endY = gradientHeight
-                                )
-                                val bottomFade = Brush.verticalGradient(
-                                    colors = listOf(Color.Transparent, fadeColor, backgroundColor),
-                                    startY = size.height - gradientHeight,
-                                    endY = size.height
-                                )
-
-                                if (scrollState.value > 0) {
-                                    drawRect(brush = topFade, size = size)
-                                }
-                                if (scrollState.canScrollForward) {
-                                    drawRect(brush = bottomFade, size = size)
-                                }
-                            }
+                        // … resto igual
                     )
                 }
             }
 
-            // Bottom overlay: segmented control (when unlocked) + record button
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -262,9 +237,8 @@ fun TranscriptionScreen(navController: NavController) {
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    RecordToggleIconButtonWithCloudSTT(
+                    RecordButton(
                         onTextRecognized = { recognizedText ->
-                            // si estamos traduciendo, este recognizedText ya viene traducido
                             if (mode == TranscriptionMode.TRANSLATE) {
                                 translatedText += if (translatedText.isNotBlank()) "\n$recognizedText" else recognizedText
                             } else {
