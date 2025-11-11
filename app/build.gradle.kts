@@ -27,6 +27,8 @@ android {
         }
         val googleKey = props.getProperty("GOOGLE_API_KEY") ?: ""
         buildConfigField("String", "GOOGLE_API_KEY", "\"$googleKey\"")
+        val openRouterKey = props.getProperty("OPENROUTER_API_KEY") ?: ""
+        buildConfigField("String", "OPENROUTER_API_KEY", "\"$openRouterKey\"")
     }
 
     buildTypes {

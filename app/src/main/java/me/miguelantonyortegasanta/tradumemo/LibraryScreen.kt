@@ -4,7 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -20,6 +19,13 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.google.firebase.Timestamp
+import java.text.SimpleDateFormat
+import java.util.Locale
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+
 
 @Composable
 fun LibraryScreen(navController: NavController) {
@@ -67,7 +73,9 @@ fun LibraryScreen(navController: NavController) {
                     Icon(Icons.Default.ArrowBack, contentDescription = "Volver")
                 }
                 Spacer(Modifier.weight(1f))
-                IconButton(onClick = { /* agregar nueva transcripción */ }) {
+                IconButton(onClick = {
+                    navController.navigate("transcription")
+                }) {
                     Icon(Icons.Default.Add, contentDescription = "Agregar")
                 }
             }
@@ -123,6 +131,9 @@ fun LibraryScreen(navController: NavController) {
                                 onDeleteClick = {
                                     transcriptionToDelete = docId
                                     showDialog = true
+                                },
+                                onOpenClick = {
+                                    navController.navigate("transcription/$docId")
                                 }
                             )
                         }
@@ -168,95 +179,119 @@ fun LibraryScreen(navController: NavController) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun TranscriptionItem(
     data: Map<String, Any>,
-    onDeleteClick: () -> Unit
+    onDeleteClick: () -> Unit,
+    onOpenClick: () -> Unit,
 ) {
     val title = data["title"] as? String ?: "(Sin título)"
-    val original = data["originalText"] as? String ?: ""
-    val translated = data["translatedText"] as? String ?: ""
-    val timestamp = (data["timestamp"] as? Timestamp)?.toDate()?.toString() ?: ""
+    val ts = (data["timestamp"] as? Timestamp)?.toDate()
+    val formattedDate = ts?.let {
+        SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(it)
+    } ?: ""
 
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFF6E8DC)),
-        shape = MaterialTheme.shapes.medium,
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    val mode = data["mode"] as? String
+    val isTranslated = mode == "TRANSLATE"   // solo icono si es traducción
+
+    val hasInko = false
+
+    var showMenu by remember { mutableStateOf(false) }
+
+    Box(
+        modifier = Modifier.fillMaxWidth()
     ) {
-        Row(
+        Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+                .padding(vertical = 4.dp)
+                .combinedClickable(
+                    onClick = { onOpenClick() },
+                    onLongClick = { showMenu = true }
+                ),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFF6E8DC)),
+            shape = MaterialTheme.shapes.medium,
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
         ) {
-            // 🔹 Avatar + textos
             Row(
-                modifier = Modifier.weight(1f),
-                verticalAlignment = Alignment.CenterVertically
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Surface(
-                    shape = CircleShape,
-                    color = Color(0xFFE8DEF8),
-                    modifier = Modifier.size(42.dp)
+                // Título + fecha
+                Column(
+                    modifier = Modifier.weight(1f)
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text(title.take(1).uppercase(), fontWeight = FontWeight.Bold)
-                    }
-                }
-
-                Spacer(Modifier.width(12.dp))
-
-                Column {
                     Text(
                         text = title,
                         fontSize = 17.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFF2C2C2C)
+                        color = Color(0xFF2C2C2C),
+                        maxLines = 1
                     )
-                    if (original.isNotBlank()) {
+                    if (formattedDate.isNotBlank()) {
                         Text(
-                            text = original.take(60),
-                            fontSize = 14.sp,
-                            color = Color(0xFF4A4A4A)
+                            text = formattedDate,
+                            fontSize = 12.sp,
+                            color = Color.Gray
                         )
                     }
-                    if (translated.isNotBlank()) {
-                        Text(
-                            text = translated.take(60),
-                            fontSize = 13.sp,
-                            color = Color(0xFF6C6C6C)
-                        )
-                    }
-                    Text(
-                        text = "🗓 $timestamp",
-                        fontSize = 12.sp,
-                        color = Color.Gray
-                    )
                 }
-            }
 
-            // 🔹 Botones
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onDeleteClick) {
-                    Icon(Icons.Default.Delete, contentDescription = "Eliminar", tint = Color(0xFFFF4436))
-                }
-                IconButton(onClick = { /* editar */ }) {
-                    Icon(Icons.Default.EditNote, contentDescription = "Editar", tint = Color(0xFF444444))
-                }
-                IconButton(onClick = { /* IA */ }) {
-                    Icon(Icons.Default.BugReport, contentDescription = "IA", tint = Color(0xFF444444))
-                }
-                IconButton(onClick = { /* traducir */ }) {
-                    Icon(Icons.Default.Translate, contentDescription = "Traducir", tint = Color(0xFF444444))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Slot Inko
+                    Box(
+                        modifier = Modifier.size(32.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (hasInko) {
+                            Icon(
+                                imageVector = Icons.Default.Psychology,
+                                contentDescription = "Inko",
+                                tint = Color(0xFF444444),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+
+                    Box(
+                        modifier = Modifier.size(32.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (isTranslated) {
+                            Icon(
+                                imageVector = Icons.Default.Translate,
+                                contentDescription = "Traducción",
+                                tint = Color(0xFF444444),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
                 }
             }
         }
+
+        DropdownMenu(
+            expanded = showMenu,
+            onDismissRequest = { showMenu = false },
+            modifier = Modifier.align(Alignment.TopEnd)
+        ) {
+            DropdownMenuItem(
+                text = { Text("Eliminar nota") },
+                onClick = {
+                    showMenu = false
+                    onDeleteClick()
+                }
+            )
+        }
     }
 }
+
+
+

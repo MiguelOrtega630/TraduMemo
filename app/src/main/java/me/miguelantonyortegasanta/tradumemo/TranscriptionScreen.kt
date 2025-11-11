@@ -24,18 +24,23 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import com.google.firebase.auth.FirebaseAuth        // 🔹 nuevo
+import com.google.firebase.firestore.FirebaseFirestore // 🔹 nuevo
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TranscriptionScreen(navController: NavController) {
+fun TranscriptionScreen(
+    navController: NavController,
+    docId: String? = null
+) {
 
     var textoExtraido by rememberSaveable { mutableStateOf("") }
 
-    // Mode state: selectable until first recording starts
+    // Estados del modo (Transcribir/Traducir)
     var mode by rememberSaveable { mutableStateOf(TranscriptionMode.TRANSCRIBE) }
     var modeLocked by rememberSaveable { mutableStateOf(false) }
 
-    // Title state
+    // Cosas del Título
     val defaultTitle = "Nueva transcripción"
     var title by rememberSaveable { mutableStateOf(defaultTitle) }
     var isEditingTitle by rememberSaveable { mutableStateOf(false) }
@@ -47,7 +52,7 @@ fun TranscriptionScreen(navController: NavController) {
     val titleColor = if (hasCustomTitle) Color.Black else Color.Gray
     val iconColor = Color.Gray
 
-    // Layout constants (bigger bottom padding to fit control + button)
+    // Layout
     val overlayHeight = 120.dp
     val overlayBottomPadding = 24.dp
     val contentBottomPadding = overlayHeight + overlayBottomPadding
@@ -55,25 +60,66 @@ fun TranscriptionScreen(navController: NavController) {
     var originalText by rememberSaveable { mutableStateOf("") }
     var translatedText by rememberSaveable { mutableStateOf("") }
 
+    //Cargar una nota existente
+    val auth = FirebaseAuth.getInstance()
+    val uid = auth.currentUser?.uid
+    var isLoadingExisting by remember { mutableStateOf(false) }
+    var loadError by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(docId) {
+        if (docId != null) {
+            val uid = auth.currentUser?.uid ?: return@LaunchedEffect
+
+            FirebaseFirestore.getInstance()
+                .collection("users")
+                .document(uid)
+                .collection("transcriptions")
+                .document(docId)
+                .get()
+                .addOnSuccessListener { doc ->
+                    val data = doc.data ?: return@addOnSuccessListener
+
+                    val loadedTitle = data["title"] as? String ?: defaultTitle
+                    title = loadedTitle
+                    hasCustomTitle = loadedTitle != defaultTitle
+                    titleFieldValue = TextFieldValue(loadedTitle)
+
+                    val storedMode = when (data["mode"] as? String) {
+                        "TRANSLATE" -> TranscriptionMode.TRANSLATE
+                        else -> TranscriptionMode.TRANSCRIBE
+                    }
+                    mode = storedMode
+                    modeLocked = true   // para que no cambien el modo al editar
+
+                    originalText = data["originalText"] as? String ?: ""
+                    translatedText = data["translatedText"] as? String ?: ""
+
+                    // Lo que se ve en pantalla según modo
+                    textoExtraido = if (storedMode == TranscriptionMode.TRANSCRIBE) {
+                        originalText
+                    } else {
+                        translatedText
+                    }
+                }
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
                 navigationIcon = {
                     IconButton(
                         onClick = {
-                            // Verificamos si hay contenido según el modo
+                            // Si no hay contenido, no guardar
                             val hasContent = when (mode) {
                                 TranscriptionMode.TRANSCRIBE -> textoExtraido.isNotBlank()
                                 TranscriptionMode.TRANSLATE  -> translatedText.isNotBlank()
                             }
-
-                            // Si no hay texto, no guardamos nada
                             if (!hasContent) {
                                 navController.popBackStack()
                                 return@IconButton
                             }
 
-                            // Idioma fuente y destino según el modo
                             val sourceLanguageCode = when (mode) {
                                 TranscriptionMode.TRANSCRIBE -> "es-CO"
                                 TranscriptionMode.TRANSLATE  -> "en-US"
@@ -91,15 +137,16 @@ fun TranscriptionScreen(navController: NavController) {
                                 mode = mode,
                                 sourceLanguageCode = sourceLanguageCode,
                                 targetLanguageCode = targetLanguageCode,
+                                docId = docId,
                                 onSuccess = { navController.popBackStack() },
-                                onError = { e -> navController.popBackStack() }
+                                onError = { navController.popBackStack() }
                             )
                         }
                     ) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Volver")
                     }
-                }
-                ,
+
+                },
                 title = {
                     if (isEditingTitle) {
                         LaunchedEffect(isEditingTitle) {
@@ -176,97 +223,113 @@ fun TranscriptionScreen(navController: NavController) {
                 .fillMaxSize()
         ) {
             val scrollState = rememberScrollState()
-            val backgroundColor = MaterialTheme.colorScheme.background
-            val fadeColor = backgroundColor.copy(alpha = 0.9f)
 
-            // Main content: mode label + scrollable text
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
-            ) {
-                // 🏷️ Mode label (always visible)
-                val modeText = when (mode) {
-                    TranscriptionMode.TRANSCRIBE -> "Modo: Transcribir"
-                    TranscriptionMode.TRANSLATE  -> "Modo: Traducir"
+            when {
+                isLoadingExisting -> {
+                    // 🔹 Cargando nota desde Firestore
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = Color(0xFFFF4436))
+                    }
                 }
-                Text(
-                    text = modeText,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                Spacer(Modifier.height(8.dp))
-
-                // Selectable + scrollable text with fades
-                SelectionContainer {
-                    Text(
-                        text = when (mode) {
-                            TranscriptionMode.TRANSCRIBE -> textoExtraido
-                            TranscriptionMode.TRANSLATE  -> translatedText
-                        },
-                        style = MaterialTheme.typography.bodyLarge,
+                loadError != null -> {
+                    // 🔹 Error al cargar
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Error al cargar la nota: $loadError",
+                            color = Color.Red
+                        )
+                    }
+                }
+                else -> {
+                    // 🔹 Contenido normal
+                    Column(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(bottom = contentBottomPadding)
-                            .verticalScroll(scrollState)
-                        // … resto igual
-                    )
-                }
-            }
+                            .padding(horizontal = 16.dp, vertical = 12.dp)
+                    ) {
+                        val modeText = when (mode) {
+                            TranscriptionMode.TRANSCRIBE -> "Modo: Transcribir"
+                            TranscriptionMode.TRANSLATE  -> "Modo: Traducir"
+                        }
+                        Text(
+                            text = modeText,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
 
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                if (!modeLocked) {
-                    ModeSegmentedControl(
-                        mode = mode,
-                        onModeChange = { if (!modeLocked) mode = it },
-                        enabled = !modeLocked,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(Modifier.height(12.dp))
-                }
+                        Spacer(Modifier.height(8.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    RecordButton(
-                        onTextRecognized = { recognizedText ->
-                            if (mode == TranscriptionMode.TRANSLATE) {
-                                translatedText += if (translatedText.isNotBlank()) "\n$recognizedText" else recognizedText
-                            } else {
-                                textoExtraido += if (textoExtraido.isNotBlank()) "\n$recognizedText" else recognizedText
-                            }
-                        },
-                        onOriginalRecognized = { original ->
-                            if (mode == TranscriptionMode.TRANSLATE) {
-                                originalText += if (originalText.isNotBlank()) "\n$original" else original
-                            }
-                        },
-                        onRecordingStart = {
-                            if (!modeLocked) modeLocked = true
-                        },
-                        languageCode = when (mode) {
-                            TranscriptionMode.TRANSCRIBE -> "es-CO"  // audio en español
-                            TranscriptionMode.TRANSLATE  -> "en-US"  // audio en inglés
-                        },
-                        translate = (mode == TranscriptionMode.TRANSLATE),
-                        translationSourceLanguageCode = "en",
-                        translationTargetLanguageCode = "es"
-                    )
+                        SelectionContainer {
+                            Text(
+                                text = when (mode) {
+                                    TranscriptionMode.TRANSCRIBE -> textoExtraido
+                                    TranscriptionMode.TRANSLATE  -> translatedText
+                                },
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(bottom = contentBottomPadding)
+                                    .verticalScroll(scrollState)
+                            )
+                        }
+                    }
 
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        if (!modeLocked) {
+                            ModeSegmentedControl(
+                                mode = mode,
+                                onModeChange = { if (!modeLocked) mode = it },
+                                enabled = !modeLocked,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Spacer(Modifier.height(12.dp))
+                        }
 
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RecordButton(
+                                onTextRecognized = { recognizedText ->
+                                    if (mode == TranscriptionMode.TRANSLATE) {
+                                        translatedText += if (translatedText.isNotBlank()) "\n$recognizedText" else recognizedText
+                                    } else {
+                                        textoExtraido += if (textoExtraido.isNotBlank()) "\n$recognizedText" else recognizedText
+                                    }
+                                },
+                                onOriginalRecognized = { original ->
+                                    if (mode == TranscriptionMode.TRANSLATE) {
+                                        originalText += if (originalText.isNotBlank()) "\n$original" else original
+                                    }
+                                },
+                                onRecordingStart = {
+                                    if (!modeLocked) modeLocked = true
+                                },
+                                languageCode = when (mode) {
+                                    TranscriptionMode.TRANSCRIBE -> "es-CO"  // audio en español
+                                    TranscriptionMode.TRANSLATE  -> "en-US"  // audio en inglés
+                                },
+                                translate = (mode == TranscriptionMode.TRANSLATE),
+                                translationSourceLanguageCode = "en",
+                                translationTargetLanguageCode = "es"
+                            )
+                        }
+                    }
                 }
             }
         }
     }
 }
-
-

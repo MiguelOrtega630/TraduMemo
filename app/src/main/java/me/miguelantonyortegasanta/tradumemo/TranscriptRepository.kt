@@ -3,6 +3,8 @@ package me.miguelantonyortegasanta.tradumemo
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.Timestamp
+import com.google.firebase.firestore.SetOptions
+
 
 object TranscriptionRepository {
 
@@ -16,6 +18,7 @@ object TranscriptionRepository {
         mode: TranscriptionMode,
         sourceLanguageCode: String,
         targetLanguageCode: String?,
+        docId: String? = null,
         onSuccess: () -> Unit,
         onError: (Exception) -> Unit
     ) {
@@ -35,11 +38,23 @@ object TranscriptionRepository {
             "timestamp" to Timestamp.now()
         )
 
-        db.collection("users")
+        val colRef = db.collection("users")
             .document(uid)
             .collection("transcriptions")
-            .add(data)
-            .addOnSuccessListener { onSuccess() }
-            .addOnFailureListener { e -> onError(e) }
+
+        if (docId == null) {
+            // Nueva nota
+            colRef
+                .add(data)
+                .addOnSuccessListener { onSuccess() }
+                .addOnFailureListener { e -> onError(e) }
+        } else {
+            // Actualizar nota existente
+            colRef
+                .document(docId)
+                .set(data, SetOptions.merge())
+                .addOnSuccessListener { onSuccess() }
+                .addOnFailureListener { e -> onError(e) }
+        }
     }
 }
