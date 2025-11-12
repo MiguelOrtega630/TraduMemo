@@ -63,7 +63,7 @@ class SimpleRecorder(
             bufferSize.coerceAtLeast(sampleRate * 2)
         )
 
-        // Activar procesamiento de audio del sistema (si está disponible)
+        // Activar procesamiento de audio del sistema
         recorder?.let { rec ->
             if (NoiseSuppressor.isAvailable()) {
                 NoiseSuppressor.create(rec.audioSessionId)
@@ -74,7 +74,7 @@ class SimpleRecorder(
         }
 
         outStream = ByteArrayOutputStream()
-        recorder?.startRecording()   // 🎙️ aquí sigue igual, comienza la captura
+        recorder?.startRecording()   //aquí sigue igual, comienza la captura
 
         recordingThread = Thread {
             val buffer = ShortArray(bufferSize / 2)
@@ -117,7 +117,7 @@ class SimpleRecorder(
         recordingThread = null
     }
 
-    // WAV header + PCM (little endian)
+    //WAV header + PCM (little endian)
     private fun pcmToWav(pcm: ByteArray, sampleRate: Int, channels: Int, bitsPerSample: Int): ByteArray {
         val byteRate = sampleRate * channels * bitsPerSample / 8
         val totalDataLen = pcm.size + 36
@@ -151,7 +151,7 @@ class SimpleRecorder(
 
 
 
-// --- Network: envia WAV base64 a Google Speech-to-Text (REST v1) ---
+//Enviar WAV a Google Speech-to-Text
 suspend fun sendWavToGoogleSpeech(
     wavBytes: ByteArray,
     languageCode: String = "es-CO"
@@ -295,16 +295,13 @@ fun RecordButton(
                     scope.launch {
                         val wav = withContext(Dispatchers.Default) { recorder.stopAndGetWav() }
 
-                        // 🔹 DEBUG: guardar el WAV SIEMPRE que pares manualmente
-                        //debugSaveWav(context, wav)
-
                         try {
-                            // 🔹 1) Speech-to-Text
+                            //Speech-to-Text
                             val transcript = sendWavToGoogleSpeech(wav, languageCode)
 
                             onOriginalRecognized?.invoke(transcript)
 
-                            // 🔹 2) Traducción opcional
+                            //Traducción opcional
                             val finalText = if (translate) {
                                 translateText(
                                     text = transcript,

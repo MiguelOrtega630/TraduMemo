@@ -226,7 +226,7 @@ fun TranscriptionScreen(
 
             when {
                 isLoadingExisting -> {
-                    // 🔹 Cargando nota desde Firestore
+                    //Cargando nota desde Firestore
                     Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
@@ -247,7 +247,7 @@ fun TranscriptionScreen(
                     }
                 }
                 else -> {
-                    // 🔹 Contenido normal
+                    //Contenido normal
                     Column(
                         modifier = Modifier
                             .fillMaxSize()

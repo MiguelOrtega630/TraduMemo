@@ -28,7 +28,7 @@ import androidx.compose.material3.DropdownMenuItem
 
 
 @Composable
-fun LibraryScreen(navController: NavController) {
+fun LibraryScreen(navController: NavController, pickerMode: Boolean = false) {
     val auth = FirebaseAuth.getInstance()
     val uid = auth.currentUser?.uid
 
@@ -133,8 +133,17 @@ fun LibraryScreen(navController: NavController) {
                                     showDialog = true
                                 },
                                 onOpenClick = {
-                                    navController.navigate("transcription/$docId")
+                                    if (pickerMode) {
+                                        navController.previousBackStackEntry
+                                            ?.savedStateHandle
+                                            ?.set("pickedDocId", docId)
+
+                                        navController.popBackStack()
+                                    } else {
+                                        navController.navigate("transcription/$docId")
+                                    }
                                 }
+
                             )
                         }
                     }
@@ -193,7 +202,7 @@ fun TranscriptionItem(
     } ?: ""
 
     val mode = data["mode"] as? String
-    val isTranslated = mode == "TRANSLATE"   // solo icono si es traducción
+    val isTranslated = mode == "TRANSLATE"
 
     val hasInko = false
 

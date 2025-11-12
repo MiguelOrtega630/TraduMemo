@@ -19,24 +19,32 @@ fun AppNavigation() {
         composable("login") { LoginScreen(navController) }
         composable("register") { RegisterScreen(navController) }
         composable("main") { MainScreen(navController) }
+
         composable("library") { LibraryScreen(navController) }
-
-
-        composable("transcription") {
-            TranscriptionScreen(navController, docId = null)
+        composable("libraryPicker") {
+            LibraryScreen(navController, pickerMode = true) // modo seleccionar contexto para Inko
         }
 
-        // Transcription screen con nota existente
+        composable("transcription") {
+            TranscriptionScreen(navController, docId = null) //Pantalla de transcribir
+        }
         composable(
             route = "transcription/{docId}",
             arguments = listOf(
-                navArgument("docId") { type = NavType.StringType }
+                navArgument("docId") { type = NavType.StringType } //Abrir una transcripción existente
             )
         ) { backStackEntry ->
             val docId = backStackEntry.arguments?.getString("docId")
             TranscriptionScreen(navController, docId = docId)
         }
 
-        composable("chat") { ChatScreen(navController) } //INKO
+        composable("chat") {
+            ChatScreen(navController = navController) //Chat Inko
+        }
+        composable("chat/{sessionId}") { backStackEntry ->
+            val sessionId = backStackEntry.arguments?.getString("sessionId") //Chat Inko existente
+            ChatScreen(navController = navController, sessionIdArg = sessionId)
+        }
+
     }
 }
