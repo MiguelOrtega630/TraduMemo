@@ -1,6 +1,7 @@
 package me.miguelantonyortegasanta.tradumemo
 
 import RecordButton
+import android.graphics.fonts.FontStyle
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -19,13 +20,19 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
-import com.google.firebase.auth.FirebaseAuth        // 🔹 nuevo
-import com.google.firebase.firestore.FirebaseFirestore // 🔹 nuevo
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -266,17 +273,35 @@ fun TranscriptionScreen(
                         Spacer(Modifier.height(8.dp))
 
                         SelectionContainer {
-                            Text(
-                                text = when (mode) {
-                                    TranscriptionMode.TRANSCRIBE -> textoExtraido
-                                    TranscriptionMode.TRANSLATE  -> translatedText
-                                },
-                                style = MaterialTheme.typography.bodyLarge,
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(bottom = contentBottomPadding)
-                                    .verticalScroll(scrollState)
-                            )
+                            when (mode) {
+                                TranscriptionMode.TRANSCRIBE -> {
+                                    Text(
+                                        text = textoExtraido,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(bottom = contentBottomPadding)
+                                            .verticalScroll(scrollState)
+                                    )
+                                }
+                                TranscriptionMode.TRANSLATE -> {
+                                    val annotated = remember(translatedText, originalText) {
+                                        buildBilingualAnnotatedString(
+                                            translated = translatedText,
+                                            original = originalText,
+                                            originalInline = true //true: parentesis /false: nueva linea
+                                        )
+                                    }
+                                    Text(
+                                        text = annotated,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(bottom = contentBottomPadding)
+                                            .verticalScroll(scrollState)
+                                    )
+                                }
+                            }
                         }
                     }
 
@@ -330,6 +355,50 @@ fun TranscriptionScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+private fun buildBilingualAnnotatedString(
+    translated: String,
+    original: String,
+    originalInline: Boolean = true // true: va entre paréntesis; false: en la línea siguiente
+): AnnotatedString {
+    val tLines = translated.split('\n')
+    val oLines = original.split('\n')
+    val max = maxOf(tLines.size, oLines.size)
+
+    return buildAnnotatedString {
+        for (i in 0 until max) {
+            val t = tLines.getOrNull(i)?.trim().orEmpty()
+            val o = oLines.getOrNull(i)?.trim().orEmpty()
+
+            if (t.isNotEmpty()) append(t)
+
+            if (o.isNotEmpty()) {
+                if (originalInline) {
+                    append(" ")
+                    withStyle(
+                        SpanStyle(
+                            color = Color.Gray,
+                            fontSize = 13.sp
+                        )
+                    ) {
+                        append("($o)")
+                    }
+                } else {
+                    append("\n")
+                    withStyle(
+                        SpanStyle(
+                            color = Color.Gray,
+                            fontSize = 13.sp
+                        )
+                    ) {
+                        append(o)
+                    }
+                }
+            }
+            if (i < max - 1) append("\n")
         }
     }
 }
